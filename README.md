@@ -1,0 +1,1 @@
+# Projt Of Computational Intelegence
