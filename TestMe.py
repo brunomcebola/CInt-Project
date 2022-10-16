@@ -38,16 +38,39 @@ df_features = df.drop(["Date", "Time", "Persons"], axis=1)
 df_output = df["Persons"]
 
 # z score
-standard = StandardScaler().fit_transform(df_features.values)
+for feature in df_features.columns:
+    if feature == "PIR1" or feature == "PIR2":
+        continue
 
-df_features = pd.DataFrame(standard, index=df_features.index, columns=df_features.columns)
+    df_features[feature] = (df_features[feature] - df_features[feature].mean()) / df_features[feature].std(ddof=0)
 
 # remove outliers
 outliers = getOutliersFromAverage(df_features, 6)
 df_features = removeLine(df_features, outliers)
 df_output = removeLine(df_output, outliers)
 
-print("Removes outliers: " + str(len(outliers)))
+print("Removed outliers: " + str(len(outliers)))
+print()
+
+# moving average
+for feature in df_features.columns:
+    if feature == "PIR1" or feature == "PIR2":
+        continue
+
+    df_features[feature] = df_features[feature].rolling(75).mean()
+
+for feature in df_features.columns:
+    df_output = df_output[df_features[feature].notna()]
+    df_features = df_features[df_features[feature].notna()]
+
+# normalization with min-max
+for feature in df_features.columns:
+    if feature == "PIR1" or feature == "PIR2":
+        continue
+
+    df_features[feature] = (df_features[feature] - df_features[feature].min()) / (
+        df_features[feature].max() - df_features[feature].min()
+    )
 
 # predict and confusion matrix
 X = df_features.to_numpy()

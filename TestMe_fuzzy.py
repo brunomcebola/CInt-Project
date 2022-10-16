@@ -26,7 +26,8 @@ def getOutliersFromAverage(data, gain):
 
 def removeLine(data, indexes):
     return data.drop(indexes)
-  
+
+
 def perf_measure(y_actual, y_hat):
     TP = 0
     FP = 0
@@ -57,9 +58,11 @@ df_features = df.drop(["Date", "Time", "Persons"], axis=1)
 df_output = df["Persons"]
 
 # z score
-standard = StandardScaler().fit_transform(df_features.values)
+for feature in df_features.columns:
+    if feature == "PIR1" or feature == "PIR2":
+        continue
 
-df_features = pd.DataFrame(standard, index=df_features.index, columns=df_features.columns)
+    df_features[feature] = (df_features[feature] - df_features[feature].mean()) / df_features[feature].std(ddof=0)
 
 # remove outliers
 outliers = getOutliersFromAverage(df_features, 6)
@@ -128,16 +131,12 @@ for id, x in enumerate(X):
 
     y_pred.append(predicted)
 
-    # Se preveu bem overcrowded
     if predicted == 1 and correct == 1:
         TP += 1
-    # Se preveu bem not overcrowded
     elif predicted == 0 and correct == 0:
         TN += 1
-    # Se preveu overcrowded erradamente
     elif predicted == 1 and correct == 0:
         FP += 1
-    # Se preveu not overcrowded erradamente
     elif predicted == 0 and correct == 1:
         FN += 1
 
