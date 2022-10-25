@@ -1,6 +1,7 @@
 from cmath import inf
 from math import floor
 import random
+from tkinter import Place
 
 from deap import base
 from deap import creator
@@ -28,9 +29,42 @@ def getPlaceList(nb_places: int):
 
 def evalRoute(individual):
 
-    # TODO
+    list_of_routes = []
+    route = []
+    capacity = 0
 
-    return (sum(individual),)
+    flag = False
+
+    for place in individual:
+
+        distance_of_route = individual #TODO here comes the data from the matrix | NOT WHAT IT IS NOW
+        
+        capacity += distance_of_route
+
+        if capacity <= 1000:
+            route.append(place)
+        else:
+            list_of_routes.append(route)
+            route.clear()
+            route.append(place)
+            capacity = distance_of_route
+
+    # Calculate the distances made
+    total_distance = 0
+
+    for route in list_of_routes:
+        for index, place in enumerate(route):
+            if index == 0:
+                distance = individual #TODO distance from warehouse to place
+                total_distance += distance
+            elif index == len(route) + 1:
+                distance = individual #TODO distance from place to warehouse
+                total_distance += distance
+            else:
+                distance = individual #TODO distance from place before to here
+                total_distance += distance
+                
+    return (total_distance,)
 
 
 creator.create("FitnessMin", base.Fitness, weights=(-1.0,))
