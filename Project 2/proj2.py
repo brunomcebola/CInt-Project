@@ -1,156 +1,292 @@
-from cmath import inf
-from math import floor
+import os
 import random
-from tkinter import Place
+import argparse
+from turtle import st
 import pandas as pd
+import matplotlib.pyplot as plt
 
 from deap import base
-from deap import creator
 from deap import tools
-
+from deap import creator
+from math import floor, inf
 
 # CONSTANTS
-INIT_POP = 40
-OFFSPRING_SIZE = 40
-NB_PLACES = 10
-MAX_LOAD = 1000
-MAX_EVALS = 10000
-MAX_STALL = 10
 CXPB = 0.5
+LOAD = 1000
 MUTPB = 0.2
+STALL = inf
+EVALS = 10000
+COSTUMERS = 10
+POPULATION = 40
 
 # FUNCTIONS
-def getPlaceList(nb_places: int):
-    options = list(range(1, nb_places + 1))
+def parseCmdLine():
+    parser = argparse.ArgumentParser(
+        prog="Distribute Orders",
+        description="Using genetic algorithms to determine the best route to deliver products to costumers",
+        add_help=True,
+    )
 
-    random.shuffle(options)
+    parser.add_argument("dist_file", type=str, help="File containing the matrix with the distances between costumers")
+    parser.add_argument("coord_file", type=str, help="File with the coordinates of the costumers and the warehouse")
+    parser.add_argument("orders_file", type=str, help="File with the orders of the costumers")
 
-    return options
+    parser.add_argument("--mut-prob", "-mp", type=int, dest="mutation_prob", default=MUTPB)
+    parser.add_argument("--pop-size", "-p", type=int, dest="population_size", default=POPULATION)
+    parser.add_argument("--cross-prob", "-cp", type=int, dest="crossover_prob", default=CXPB)
+    parser.add_argument("--max-evals", "-e", type=int, dest="max_evals", default=EVALS)
+    parser.add_argument("--nb-costumers", "-c", type=int, dest="nb_costumers", default=COSTUMERS)
+    parser.add_argument("--max-stall", "-s", type=int, dest="max_stall", default=STALL)
+    parser.add_argument("--max-load", "-l", type=int, dest="max_load", default=LOAD)
 
+    parser.add_argument("--seed", type=int, dest="seed", default=0)
+    parser.add_argument("--verbose", dest="verbose", action="store_true", default=False)
+    parser.add_argument("--iterate", dest="iterate", action="store_true", default=False)
 
-def getRoute(individual, order_matrix):
-    aux_route = []
-    full_route = []
+    args = parser.parse_args()
 
-    current_load = 0
-
-    for place in individual:
-
-        order = int(order_matrix.loc[order_matrix["Customer"] == place]['Orders'])
-
-        current_load += order
-        
-        if current_load <= MAX_LOAD:
-            aux_route.append(place)
-        else:
-            full_route.append(aux_route)
-            aux_route = []
-            aux_route.append(place)
-            current_load = 0
-
-    full_route.append(aux_route)
-    aux_route = [0]
-
-    for route in full_route:
-        aux_route += route + [0]
-
-    return aux_route
-
-
-def evalRoute(individual, order_matrix, dist_matrix):
-
-    route = getRoute(individual, order_matrix)
-
-    # Calculate the total distance
-    total_distance = 0
-
-    for prev_place, current_place in zip(route[:-1], route[1:]):
-        total_distance += dist_matrix[prev_place][current_place]
-
-    return (total_distance,)
+    return args.__dict__
 
 
 def readCSV(file_name):
     return pd.read_csv(file_name)
 
 
+def getRoute(route, orders_matrix, max_load):
+    load = 0
+    final_route = [-1]
+
+    for location in route:
+        load += int(orders_matrix.loc[orders_matrix["Customer"] == location + 1]["Orders"])
+
+        if load > max_load:
+            final_route.append(-1)
+            load = 0
+
+        final_route.append(location)
+
+    final_route.append(-1)
+
+    return final_route
+
+
+def getDistance(route, dist_matrix):
+    distance = 0
+
+    for prev_place, current_place in zip(route[:-1], route[1:]):
+        distance += dist_matrix[prev_place + 1][current_place + 1]
+
+    return distance
+
+
+def evalRoute(individual, orders_matrix, dist_matrix, max_load):
+
+    route = getRoute(individual, orders_matrix, max_load)
+
+    distance = getDistance(route, dist_matrix)
+
+    return (distance,)
+
+
+def algorithm(toolbox, population_size, mutation_prob, crossover_prob, max_stall, max_evals, seed, verbose=False):
+    random.seed(seed)
+
+    pop = toolbox.population(n=population_size)  # type: ignore
+
+    if verbose:
+        print("-- Generation 0 --")
+
+    fitnesses = list(map(toolbox.evaluate, pop))  # type: ignore
+    for ind, fit in zip(pop, fitnesses):
+        ind.fitness.values = fit
+
+    fits = [ind.fitness.values[0] for ind in pop]
+
+    g = 0
+    stall = 0
+    min_path = inf
+
+    while stall < max_stall and g < floor((max_evals / population_size) - 1):
+        if verbose:
+            print("-- Generation %i --" % (g + 1))
+
+        offspring = list(map(toolbox.clone, toolbox.select(pop, population_size)))  # type: ignore
+
+        for child1, child2 in zip(offspring[::2], offspring[1::2]):
+            if random.random() < crossover_prob:
+                toolbox.mate(child1, child2)  # type: ignore
+
+                del child1.fitness.values
+                del child2.fitness.values
+
+        for mutant in offspring:
+            if random.random() < mutation_prob:
+                toolbox.mutate(mutant)  # type: ignore
+                del mutant.fitness.values
+
+        invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
+        fitnesses = map(toolbox.evaluate, invalid_ind)  # type: ignore
+        for ind, fit in zip(invalid_ind, fitnesses):
+            ind.fitness.values = fit
+
+        pop[:] = offspring
+
+        fits = [ind.fitness.values[0] for ind in pop]
+
+        if min(fits) < min_path:
+            min_path = min(fits)
+            stall = 0
+        else:
+            stall = stall + 1
+
+        if verbose:
+            print("dist %d" % min_path)
+
+        g += 1
+
+    if verbose:
+        print("-- End of evolution --")
+
+    return pop, fits
+
+
+def getStats(fits, pop_size):
+
+    mean = sum(fits) / pop_size
+    sum2 = sum(x * x for x in fits)
+    std = abs(sum2 / pop_size - mean**2) ** 0.5
+
+    return max(fits), min(fits), mean, std
+
+
+def plotRoute(route, coord_matrix):
+    X = []
+    Y = []
+    L = []
+    
+    for i in range(len(route)):
+        route[i] += 1
+        
+    for location in route:
+        X.append(int(coord_matrix["X"][location]))
+        Y.append(int(coord_matrix["Y"][location]))
+        L.append(location)
+
+    print("Route: %s" % route)
+
+    plt.plot(X, Y, "-o")
+
+    for i, txt in enumerate(L):
+        plt.annotate(txt, (X[i], Y[i]))
+
+    plt.show()
+
+    
+
+# PARSE CMD LINE ARGUMENTS
+params = parseCmdLine()
+
 # READ DATA FROM CSV
-dist_matrix = readCSV("CustDist_WHCentral.csv").iloc[:, 1:]
+if not os.path.exists(params["dist_file"]):
+    raise SystemExit("[DISTANCES] File '%s' does not exist" % params["dist_file"])
+
+if not os.path.exists(params["coord_file"]):
+    raise SystemExit("[COORDINATES] File '%s' does not exist" % params["coord_file"])
+
+if not os.path.exists(params["orders_file"]):
+    raise SystemExit("[ORDERS] File '%s' does not exist" % params["orders_file"])
+
+coord_matrix = readCSV(params["coord_file"])
+orders_matrix = readCSV(params["orders_file"])
+dist_matrix = readCSV(params["dist_file"])
+
+dist_matrix = dist_matrix.iloc[:, 1:]
 dist_matrix.columns = dist_matrix.columns.astype(int)
 
-order_matrix = readCSV("CustOrd.csv")
-
-
-# CREATE EA
+# REGISTER TOOLBOX
 creator.create("FitnessMin", base.Fitness, weights=(-1.0,))
 creator.create("Individual", list, fitness=creator.FitnessMin)  # type: ignore
 
 toolbox = base.Toolbox()
 
-toolbox.register("place", getPlaceList, NB_PLACES)
+toolbox.register("location", random.sample, range(params["nb_costumers"]), params["nb_costumers"])
 
-toolbox.register("individual", tools.initIterate, creator.Individual, toolbox.place)  # type: ignore
+toolbox.register("individual", tools.initIterate, creator.Individual, toolbox.location)  # type: ignore
 
 toolbox.register("population", tools.initRepeat, list, toolbox.individual)  # type: ignore
 
-toolbox.register("evaluate", evalRoute, order_matrix=order_matrix, dist_matrix=dist_matrix)
-
-toolbox.register("crossover", tools.cxOrdered)
+toolbox.register("mate", tools.cxPartialyMatched)
 
 toolbox.register("mutate", tools.mutShuffleIndexes, indpb=0.05)
 
 toolbox.register("select", tools.selTournament, tournsize=2)
 
+toolbox.register("evaluate", evalRoute, orders_matrix=orders_matrix, dist_matrix=dist_matrix, max_load=params["max_load"])
+
 # ALGORITHM
-pop = toolbox.population(n=INIT_POP)  # type: ignore
+if params["iterate"]:
+    best_route = []
+    best_fit = inf
+    avg_max = 0
+    avg_min = 0
+    avg_mean = 0
+    avg_std = 0
 
-print("-- Generation 0 --")
+    for seed in range(30):
+        pop, fits = algorithm(
+            toolbox,
+            params["population_size"],
+            params["mutation_prob"],
+            params["crossover_prob"],
+            params["max_stall"],
+            params["max_evals"],
+            seed,
+            params["verbose"],
+        )
 
-fitnesses = list(map(toolbox.evaluate, pop))  # type: ignore
-for ind, fit in zip(pop, fitnesses):
-    ind.fitness.values = fit
+        route = getRoute(tools.selBest(pop, 1)[0], orders_matrix, params["max_load"])
 
-fits = [ind.fitness.values[0] for ind in pop]
+        max_fit, min_fit, mean, std = getStats(fits, params["population_size"])
 
-g = 0
-stall = 0
-min_path = inf
+        if min_fit < best_fit:
+            best_fit = min_fit
+            best_route = route
 
-while stall < MAX_STALL and g < floor((MAX_EVALS - INIT_POP) / OFFSPRING_SIZE):
-    print("-- Generation %i --" % g)
+        avg_max += max_fit
+        avg_min += min_fit
+        avg_std += std
+        avg_mean += mean
 
-    offspring = list(map(toolbox.clone, toolbox.select(pop, OFFSPRING_SIZE)))  # type: ignore
+    avg_max /= 30
+    avg_min /= 30
+    avg_std /= 30
+    avg_mean /= 30
 
-    for child1, child2 in zip(offspring[::2], offspring[1::2]):
-        if random.random() < CXPB:
-            toolbox.crossover(child1, child2)  # type: ignore
+    print("Avg min: %d" % avg_min)
+    print("Avg max: %d" % avg_max)
+    print("Avg std: %d" % avg_std)
+    print("Avg mean: %d" % avg_mean)
 
-            del child1.fitness.values
-            del child2.fitness.values
+    plotRoute(best_route, coord_matrix)
+else:
+    pop, fits = algorithm(
+        toolbox,
+        params["population_size"],
+        params["mutation_prob"],
+        params["crossover_prob"],
+        params["max_stall"],
+        params["max_evals"],
+        params["seed"],
+        params["verbose"],
+    )
 
-    for mutant in offspring:
-        if random.random() < MUTPB:
-            toolbox.mutate(mutant)  # type: ignore
-            del mutant.fitness.values
+    route = getRoute(tools.selBest(pop, 1)[0], orders_matrix, params["max_load"])
 
-    invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
-    fitnesses = map(toolbox.evaluate, invalid_ind)  # type: ignore
-    for ind, fit in zip(invalid_ind, fitnesses):
-        ind.fitness.values = fit
+    max_fit, min_fit, mean, std = getStats(fits, params["population_size"])
 
-    pop[:] = offspring
+    print("Min: %d" % min(fits))
+    print("Max: %d" % max(fits))
+    print("Std: %d" % std)
+    print("Mean: %d" % mean)
 
-    fits = [ind.fitness.values[0] for ind in pop]
-
-    if min(fits) < min_path:
-        min_path = min(fits)
-        stall = 0
-    else:
-        stall = stall + 1
-
-    g = g + OFFSPRING_SIZE
-
-print("-- End of (successful) evolution --")
-
-best_ind = tools.selBest(pop, 1)[0]
-print("Best individual is %s, %s" % (best_ind, best_ind.fitness.values))
+    plotRoute(route, coord_matrix)
