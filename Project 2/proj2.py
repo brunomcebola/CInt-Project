@@ -163,10 +163,10 @@ def plotRoute(route, coord_matrix):
     X = []
     Y = []
     L = []
-    
+
     for i in range(len(route)):
         route[i] += 1
-        
+
     for location in route:
         X.append(int(coord_matrix["X"][location]))
         Y.append(int(coord_matrix["Y"][location]))
@@ -181,7 +181,6 @@ def plotRoute(route, coord_matrix):
 
     plt.show()
 
-    
 
 # PARSE CMD LINE ARGUMENTS
 params = parseCmdLine()
@@ -247,6 +246,14 @@ if params["iterate"]:
         route = getRoute(tools.selBest(pop, 1)[0], orders_matrix, params["max_load"])
 
         max_fit, min_fit, mean, std = getStats(fits, params["population_size"])
+
+        # TODO
+        if params["verbose"]:
+            print("Min: %d" % avg_min)
+            print("Avg max: %d" % avg_max)
+            print("Avg std: %d" % avg_std)
+            print("Avg mean: %d" % avg_mean)
+            print()
 
         if min_fit < best_fit:
             best_fit = min_fit
