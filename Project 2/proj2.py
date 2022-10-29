@@ -1,3 +1,4 @@
+from ctypes import pointer
 import os
 import random
 import argparse
@@ -8,7 +9,9 @@ import matplotlib.pyplot as plt
 from deap import base
 from deap import tools
 from deap import creator
-from math import floor, inf
+from math import *
+
+import numpy as np
 
 # CONSTANTS
 CXPB = 0.5
@@ -180,6 +183,50 @@ def plotRoute(route, coord_matrix):
         plt.annotate(txt, (X[i], Y[i]))
 
     plt.show()
+# Heuristic
+
+def findangles(centroid, list_of_points):
+    # for not it used the first point, but we can make it to use the left,
+    # just need to search it and "remove it" from the list
+    angles = []
+
+    for point in list_of_points[1:]:
+        vec_a = (centroid[0] - list_of_points[0][0],centroid[1] - list_of_points[0][1] )
+        vec_b = (centroid[0] - point[0],centroid[1] - point[1])
+
+        vec_a_angle = atan2(vec_a[1], vec_a[0])
+
+        vec_b_angle = atan2(vec_b[1], vec_b[0])
+
+        angles.append( degrees(vec_b_angle - vec_a_angle))
+
+    return angles
+
+def counter_clock_wise_heuristic(list_of_points):
+    # list_of_points has to contain WareHouse as well
+
+
+    # Calculate centroid to have 2 common points everytime
+    centroid_x = centroid_y = 0
+
+    for index, point in enumerate(list_of_points):
+        if index == 0:
+            continue
+        centroid_x += point[0]
+        centroid_y += point[1]
+
+    centroid = (centroid_x/(len(list_of_points)-1),centroid_y/(len(list_of_points)-1) )
+
+    # List of points no including the warehouse
+    angles = findangles(centroid, list_of_points)
+
+    # Order it
+    angles = np.array(angles)
+
+    angles_sorted = np.argsort(angles)
+
+    # Return our selection
+    return angles_sorted
 
 
 # PARSE CMD LINE ARGUMENTS
