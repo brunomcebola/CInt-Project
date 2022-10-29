@@ -1,0 +1,7 @@
+dist_file: CustDist_WHCentral.csv
+coord_file: CustXY_WHCentral.csv
+
+nb_costumers: 10
+
+fill_orders: True
+orders: 50

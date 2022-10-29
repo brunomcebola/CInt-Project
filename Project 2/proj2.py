@@ -1,299 +1,288 @@
-import os
+import sys
 import random
-import argparse
-from turtle import st
-import pandas as pd
+import itertools
 import matplotlib.pyplot as plt
 
+from math import inf
 from deap import base
 from deap import tools
 from deap import creator
-from math import floor, inf
+from copy import deepcopy
 
-# CONSTANTS
-CXPB = 0.5
-LOAD = 1000
-MUTPB = 0.2
-STALL = inf
-EVALS = 10000
-COSTUMERS = 10
-POPULATION = 40
-
-# FUNCTIONS
-def parseCmdLine():
-    parser = argparse.ArgumentParser(
-        prog="Distribute Orders",
-        description="Using genetic algorithms to determine the best route to deliver products to costumers",
-        add_help=True,
-    )
-
-    parser.add_argument("dist_file", type=str, help="File containing the matrix with the distances between costumers")
-    parser.add_argument("coord_file", type=str, help="File with the coordinates of the costumers and the warehouse")
-    parser.add_argument("orders_file", type=str, help="File with the orders of the costumers")
-
-    parser.add_argument("--mut-prob", "-mp", type=int, dest="mutation_prob", default=MUTPB)
-    parser.add_argument("--pop-size", "-p", type=int, dest="population_size", default=POPULATION)
-    parser.add_argument("--cross-prob", "-cp", type=int, dest="crossover_prob", default=CXPB)
-    parser.add_argument("--max-evals", "-e", type=int, dest="max_evals", default=EVALS)
-    parser.add_argument("--nb-costumers", "-c", type=int, dest="nb_costumers", default=COSTUMERS)
-    parser.add_argument("--max-stall", "-s", type=int, dest="max_stall", default=STALL)
-    parser.add_argument("--max-load", "-l", type=int, dest="max_load", default=LOAD)
-
-    parser.add_argument("--seed", type=int, dest="seed", default=0)
-    parser.add_argument("--verbose", dest="verbose", action="store_true", default=False)
-    parser.add_argument("--iterate", dest="iterate", action="store_true", default=False)
-
-    args = parser.parse_args()
-
-    return args.__dict__
+import aux_functions as aux
 
 
-def readCSV(file_name):
-    return pd.read_csv(file_name)
+class Algorithm:
+    configuration = {
+        "iterations": 30,
+        #
+        "pop_size": 40,
+        "nb_costumers": 50,
+        #
+        "mut_prob": 0.2,
+        "cross_prob": 0.5,
+        #
+        "max_load": 1000,
+        "max_stall": 20,  # TODO: mudar para inf
+        "max_evals": 10000,
+    }
 
+    @classmethod
+    def getRoute(cls, individual, orders, max_load) -> list:
+        load = 0
+        route = [-1]
 
-def getRoute(route, orders_matrix, max_load):
-    load = 0
-    final_route = [-1]
+        for location in individual:
+            load += int(orders[location + 1])
 
-    for location in route:
-        load += int(orders_matrix.loc[orders_matrix["Customer"] == location + 1]["Orders"])
+            if load > max_load:
+                route.append(-1)
+                load = 0
 
-        if load > max_load:
-            final_route.append(-1)
-            load = 0
+            route.append(location)
 
-        final_route.append(location)
+        route.append(-1)
 
-    final_route.append(-1)
+        return route
 
-    return final_route
+    @classmethod
+    def getDistance(cls, route, distances) -> int:
+        distance = 0
 
+        for prev_place, current_place in zip(route[:-1], route[1:]):
+            distance += distances[prev_place + 1][current_place + 1]
 
-def getDistance(route, dist_matrix):
-    distance = 0
+        return distance
 
-    for prev_place, current_place in zip(route[:-1], route[1:]):
-        distance += dist_matrix[prev_place + 1][current_place + 1]
+    @classmethod
+    def evalRoute(cls, individual, orders, distances, max_load) -> tuple:
 
-    return distance
+        route = Algorithm.getRoute(individual, orders, max_load)
 
+        distance = Algorithm.getDistance(route, distances)
 
-def evalRoute(individual, orders_matrix, dist_matrix, max_load):
+        return (distance,)
 
-    route = getRoute(individual, orders_matrix, max_load)
+    def __init__(self, config: dict, orders: list = [], distances: list = [], coordinates: list = []) -> None:
+        self.stats = []
+        self.routes = []
+        self.min_trends = []
+        self.avg_trends = []
 
-    distance = getDistance(route, dist_matrix)
+        self.toolbox = base.Toolbox()
 
-    return (distance,)
+        creator.create("FitnessMin", base.Fitness, weights=(-1.0,))
+        creator.create("Individual", list, fitness=creator.FitnessMin)  # type: ignore
 
+        self.set_configuration(config)
 
-def algorithm(toolbox, population_size, mutation_prob, crossover_prob, max_stall, max_evals, seed, verbose=False):
-    random.seed(seed)
+        self.set_orders(orders)
+        self.set_distances(distances)
+        self.set_coordinates(coordinates)
 
-    pop = toolbox.population(n=population_size)  # type: ignore
+        self.register_toolbox()
 
-    if verbose:
-        print("-- Generation 0 --")
+    def set_configuration(self, config: dict = {}) -> None:
+        for key in config:
+            if key in self.configuration:
+                self.configuration[key] = config[key]
 
-    fitnesses = list(map(toolbox.evaluate, pop))  # type: ignore
-    for ind, fit in zip(pop, fitnesses):
-        ind.fitness.values = fit
+    def set_orders(self, orders: list = []) -> None:
+        self.orders = orders
 
-    fits = [ind.fitness.values[0] for ind in pop]
+    def set_coordinates(self, coordinates: list = []) -> None:
+        self.coordinates = coordinates
 
-    g = 0
-    stall = 0
-    min_path = inf
+    def set_distances(self, distances: list = []) -> None:
+        self.distances = distances
 
-    while stall < max_stall and g < floor((max_evals / population_size) - 1):
-        if verbose:
-            print("-- Generation %i --" % (g + 1))
+    def register_toolbox(self) -> None:
+        self.toolbox.register("location", random.sample, range(self.configuration["nb_costumers"]), self.configuration["nb_costumers"])
+        self.toolbox.register("individual", tools.initIterate, creator.Individual, self.toolbox.location)  # type: ignore
+        self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)  # type: ignore
 
-        offspring = list(map(toolbox.clone, toolbox.select(pop, population_size)))  # type: ignore
+        self.toolbox.register("mate", tools.cxPartialyMatched)
+        self.toolbox.register("select", tools.selTournament, tournsize=2)
+        self.toolbox.register("mutate", tools.mutShuffleIndexes, indpb=0.05)
+        self.toolbox.register("evaluate", Algorithm.evalRoute, orders=self.orders, distances=self.distances, max_load=self.configuration["max_load"])
 
-        for child1, child2 in zip(offspring[::2], offspring[1::2]):
-            if random.random() < crossover_prob:
-                toolbox.mate(child1, child2)  # type: ignore
+    def run(self) -> None:
+        global_min_fit = inf
 
-                del child1.fitness.values
-                del child2.fitness.values
+        global_fits = []
+        global_min_route = []
+        global_min_trend = []
+        global_avg_trend = []
 
-        for mutant in offspring:
-            if random.random() < mutation_prob:
-                toolbox.mutate(mutant)  # type: ignore
-                del mutant.fitness.values
+        # test algorithm for different seeds
+        for seed in range(self.configuration["iterations"]):
+            min_fit = inf
+            min_route = []
+            min_trend = []
+            avg_trend = []
 
-        invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
-        fitnesses = map(toolbox.evaluate, invalid_ind)  # type: ignore
-        for ind, fit in zip(invalid_ind, fitnesses):
-            ind.fitness.values = fit
+            random.seed(seed)
 
-        pop[:] = offspring
+            # generate initial population
+            pop = self.toolbox.population(n=self.configuration["pop_size"])  # type: ignore
 
-        fits = [ind.fitness.values[0] for ind in pop]
+            # evaluate population
+            fitnesses = list(map(self.toolbox.evaluate, pop))  # type: ignore
+            for ind, fit in zip(pop, fitnesses):
+                ind.fitness.values = fit
 
-        if min(fits) < min_path:
-            min_path = min(fits)
+            # store best info
+            fits = [ind.fitness.values[0] for ind in pop]
+
+            min_fit = min(fits)
+            min_route = tools.selBest(pop, 1)[0]
+            min_trend.append(min(fits))
+            avg_trend.append(sum(fits) / len(fits))
+
+            # offspring
+            g = 0
             stall = 0
-        else:
-            stall = stall + 1
+            while stall < self.configuration["max_stall"] and g < (self.configuration["max_evals"] - self.configuration["pop_size"]):
+                # generate offspring
+                offspring = list(map(self.toolbox.clone, self.toolbox.select(pop, self.configuration["pop_size"])))  # type: ignore
 
-        if verbose:
-            print("dist %d" % min_path)
+                # mate
+                for child1, child2 in zip(offspring[::2], offspring[1::2]):
+                    if random.random() < self.configuration["cross_prob"]:
+                        self.toolbox.mate(child1, child2)  # type: ignore
 
-        g += 1
+                        del child1.fitness.values
+                        del child2.fitness.values
 
-    if verbose:
-        print("-- End of evolution --")
+                # mutate
+                for mutant in offspring:
+                    if random.random() < self.configuration["mut_prob"]:
+                        self.toolbox.mutate(mutant)  # type: ignore
+                        del mutant.fitness.values
 
-    return pop, fits
+                # evaluate offspring
+                invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
+                fitnesses = map(self.toolbox.evaluate, invalid_ind)  # type: ignore
+                g += len(invalid_ind)
+                for ind, fit in zip(invalid_ind, fitnesses):
+                    ind.fitness.values = fit
+
+                # replace population by offspring
+                pop[:] = offspring
+
+                # store best info
+                fits = [ind.fitness.values[0] for ind in pop]
+
+                if min(fits) < min_fit:
+                    min_fit = min(fits)
+                    min_route = tools.selBest(pop, 1)[0]
+                    stall = 0
+                else:
+                    stall += 1
+
+                min_trend.append(min(fits))
+                avg_trend.append(sum(fits) / len(fits))
+
+            # stores best info for all seeds
+            if min_fit < global_min_fit:
+                global_min_fit = min_fit
+                global_min_route = min_route
+                global_min_trend = min_trend
+                global_avg_trend = avg_trend
+
+            global_fits.append(min_fit)
+
+        # stores best info ever on algorithm itself
+        self.routes.append(global_min_route)
+        self.min_trends.append(global_min_trend)
+        self.avg_trends.append(global_avg_trend)
+
+        # stores stats
+        mean = sum(global_fits) / len(global_fits)
+        std = abs((sum(x * x for x in global_fits)) / self.configuration["pop_size"] - mean**2) ** 0.5
+        self.stats.append({"min": global_min_fit, "mean": mean, "std": std})
+
+    def plotRoute(self) -> None:
+        for route in self.routes:
+            route = deepcopy(route)
+
+            route = Algorithm.getRoute(route, self.orders, self.configuration["max_load"])
+
+            X = []
+            Y = []
+            L = []
+
+            for i in range(len(route)):
+                route[i] += 1
+
+            for location in route:
+                X.append(int(self.coordinates[location][0]))
+                Y.append(int(self.coordinates[location][1]))
+                L.append(location)
+
+            plt.plot(X, Y, "-o")
+
+            for i, txt in enumerate(L):
+                plt.annotate(txt, (X[i], Y[i]))
+
+        plt.show()
+
+    def plotMinTrends(self) -> None:
+        for trend in self.min_trends:
+            plt.plot(list(range(len(trend))), trend)
+
+        plt.show()
+
+    def plotAvgTrends(self) -> None:
+        for trend in self.avg_trends:
+            plt.plot(list(range(len(trend))), trend)
+
+        plt.show()
+
+    def printStats(self) -> None:
+        for stat in self.stats:
+            print(stat)
+            print("Min: %s" % stat["min"])
+            print("Mean: %s" % stat["mean"])
+            print("Std: %s" % stat["std"])
+
+    def resetRoute(self) -> None:
+        self.routes = []
+
+    def reset_trends(self) -> None:
+        self.min_trends = []
+        self.avg_trends = []
+
+    def reset_stats(self) -> None:
+        self.stats = []
 
 
-def getStats(fits, pop_size):
+if __name__ == "__main__":
+    # get config from yaml
+    config = aux.read_yaml(sys.argv[1])
 
-    mean = sum(fits) / pop_size
-    sum2 = sum(x * x for x in fits)
-    std = abs(sum2 / pop_size - mean**2) ** 0.5
+    if "fill_orders" in config.keys():
+        aux.validate_config(config, ["dist_file", "coord_file"], sys.argv[1])
+    else:
+        aux.validate_config(config, ["orders_file", "dist_file", "coord_file"], sys.argv[1])
 
-    return max(fits), min(fits), mean, std
+    # get data from csv
+    if "fill_orders" in config.keys():
+        orders = [config["orders"] for i in range(config["nb_costumers"])]
+        orders.insert(0, 0)
+    else:
+        orders = list(itertools.chain(*aux.readCSV(config["orders_file"])))
 
+    distances = aux.readCSV(config["dist_file"])
+    coordinates = aux.readCSV(config["coord_file"])
 
-def plotRoute(route, coord_matrix):
-    X = []
-    Y = []
-    L = []
+    algorithm = Algorithm(config, orders, distances, coordinates)
 
-    for i in range(len(route)):
-        route[i] += 1
+    algorithm.run()
 
-    for location in route:
-        X.append(int(coord_matrix["X"][location]))
-        Y.append(int(coord_matrix["Y"][location]))
-        L.append(location)
-
-    print("Route: %s" % route)
-
-    plt.plot(X, Y, "-o")
-
-    for i, txt in enumerate(L):
-        plt.annotate(txt, (X[i], Y[i]))
-
-    plt.show()
-
-
-# PARSE CMD LINE ARGUMENTS
-params = parseCmdLine()
-
-# READ DATA FROM CSV
-if not os.path.exists(params["dist_file"]):
-    raise SystemExit("[DISTANCES] File '%s' does not exist" % params["dist_file"])
-
-if not os.path.exists(params["coord_file"]):
-    raise SystemExit("[COORDINATES] File '%s' does not exist" % params["coord_file"])
-
-if not os.path.exists(params["orders_file"]):
-    raise SystemExit("[ORDERS] File '%s' does not exist" % params["orders_file"])
-
-coord_matrix = readCSV(params["coord_file"])
-orders_matrix = readCSV(params["orders_file"])
-dist_matrix = readCSV(params["dist_file"])
-
-dist_matrix = dist_matrix.iloc[:, 1:]
-dist_matrix.columns = dist_matrix.columns.astype(int)
-
-# REGISTER TOOLBOX
-creator.create("FitnessMin", base.Fitness, weights=(-1.0,))
-creator.create("Individual", list, fitness=creator.FitnessMin)  # type: ignore
-
-toolbox = base.Toolbox()
-
-toolbox.register("location", random.sample, range(params["nb_costumers"]), params["nb_costumers"])
-
-toolbox.register("individual", tools.initIterate, creator.Individual, toolbox.location)  # type: ignore
-
-toolbox.register("population", tools.initRepeat, list, toolbox.individual)  # type: ignore
-
-toolbox.register("mate", tools.cxPartialyMatched)
-
-toolbox.register("mutate", tools.mutShuffleIndexes, indpb=0.05)
-
-toolbox.register("select", tools.selTournament, tournsize=2)
-
-toolbox.register("evaluate", evalRoute, orders_matrix=orders_matrix, dist_matrix=dist_matrix, max_load=params["max_load"])
-
-# ALGORITHM
-if params["iterate"]:
-    best_route = []
-    best_fit = inf
-    avg_max = 0
-    avg_min = 0
-    avg_mean = 0
-    avg_std = 0
-
-    for seed in range(30):
-        pop, fits = algorithm(
-            toolbox,
-            params["population_size"],
-            params["mutation_prob"],
-            params["crossover_prob"],
-            params["max_stall"],
-            params["max_evals"],
-            seed,
-            params["verbose"],
-        )
-
-        route = getRoute(tools.selBest(pop, 1)[0], orders_matrix, params["max_load"])
-
-        max_fit, min_fit, mean, std = getStats(fits, params["population_size"])
-
-        # TODO
-        if params["verbose"]:
-            print("Min: %d" % avg_min)
-            print("Avg max: %d" % avg_max)
-            print("Avg std: %d" % avg_std)
-            print("Avg mean: %d" % avg_mean)
-            print()
-
-        if min_fit < best_fit:
-            best_fit = min_fit
-            best_route = route
-
-        avg_max += max_fit
-        avg_min += min_fit
-        avg_std += std
-        avg_mean += mean
-
-    avg_max /= 30
-    avg_min /= 30
-    avg_std /= 30
-    avg_mean /= 30
-
-    print("Avg min: %d" % avg_min)
-    print("Avg max: %d" % avg_max)
-    print("Avg std: %d" % avg_std)
-    print("Avg mean: %d" % avg_mean)
-
-    plotRoute(best_route, coord_matrix)
-else:
-    pop, fits = algorithm(
-        toolbox,
-        params["population_size"],
-        params["mutation_prob"],
-        params["crossover_prob"],
-        params["max_stall"],
-        params["max_evals"],
-        params["seed"],
-        params["verbose"],
-    )
-
-    route = getRoute(tools.selBest(pop, 1)[0], orders_matrix, params["max_load"])
-
-    max_fit, min_fit, mean, std = getStats(fits, params["population_size"])
-
-    print("Min: %d" % min(fits))
-    print("Max: %d" % max(fits))
-    print("Std: %d" % std)
-    print("Mean: %d" % mean)
-
-    plotRoute(route, coord_matrix)
+    algorithm.printStats()
+    
+    algorithm.plotRoute()
+    
+    algorithm.plotAvgTrends()
+    
