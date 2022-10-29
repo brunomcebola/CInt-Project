@@ -185,26 +185,29 @@ def plotRoute(route, coord_matrix):
     plt.show()
 # Heuristic
 
-def findangles(centroid, list_of_points):
+def findangles(centroid, list_of_points, focus_point):
     # for not it used the first point, but we can make it to use the left,
     # just need to search it and "remove it" from the list
     angles = []
 
-    for point in list_of_points[1:]:
-        vec_a = (centroid[0] - list_of_points[0][0],centroid[1] - list_of_points[0][1] )
+    for point in list_of_points:
+        vec_a = (centroid[0] - list_of_points[focus_point][0],centroid[1] - list_of_points[focus_point][1] )
         vec_b = (centroid[0] - point[0],centroid[1] - point[1])
 
-        vec_a_angle = atan2(vec_a[1], vec_a[0])
+        diff_angle = degrees(atan2(vec_b[1], vec_b[0])) - degrees(atan2(vec_a[1], vec_a[0]))
 
-        vec_b_angle = atan2(vec_b[1], vec_b[0])
+        if  diff_angle < 0:
+            diff_angle += 360              
 
-        angles.append( degrees(vec_b_angle - vec_a_angle))
+        angles.append( diff_angle )
 
     return angles
 
-def counter_clock_wise_heuristic(list_of_points):
+def counter_clock_wise_heuristic(list_of_points, maximum_number):
     # list_of_points has to contain WareHouse as well
 
+    # Point that will be our focus
+    focus_point = random.randrange(maximum_number)
 
     # Calculate centroid to have 2 common points everytime
     centroid_x = centroid_y = 0
@@ -216,10 +219,8 @@ def counter_clock_wise_heuristic(list_of_points):
         centroid_y += point[1]
 
     centroid = (centroid_x/(len(list_of_points)-1),centroid_y/(len(list_of_points)-1) )
-
     # List of points no including the warehouse
-    angles = findangles(centroid, list_of_points)
-
+    angles = findangles(centroid, list_of_points, focus_point)
     # Order it
     angles = np.array(angles)
 
