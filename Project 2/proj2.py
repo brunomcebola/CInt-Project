@@ -65,7 +65,7 @@ class Algorithm:
 
     def __init__(self, config: dict, orders: list = [], distances: list = [], coordinates: list = []) -> None:
         self.stats = []
-        self.routes = []
+        self.route = []
         self.min_trends = []
         self.avg_trends = []
 
@@ -97,14 +97,22 @@ class Algorithm:
         self.distances = distances
 
     def register_toolbox(self) -> None:
-        self.toolbox.register("location", random.sample, range(self.configuration["nb_costumers"]), self.configuration["nb_costumers"])
+        self.toolbox.register(
+            "location", random.sample, range(self.configuration["nb_costumers"]), self.configuration["nb_costumers"]
+        )
         self.toolbox.register("individual", tools.initIterate, creator.Individual, self.toolbox.location)  # type: ignore
         self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)  # type: ignore
 
         self.toolbox.register("mate", tools.cxPartialyMatched)
         self.toolbox.register("select", tools.selTournament, tournsize=2)
         self.toolbox.register("mutate", tools.mutShuffleIndexes, indpb=0.05)
-        self.toolbox.register("evaluate", Algorithm.evalRoute, orders=self.orders, distances=self.distances, max_load=self.configuration["max_load"])
+        self.toolbox.register(
+            "evaluate",
+            Algorithm.evalRoute,
+            orders=self.orders,
+            distances=self.distances,
+            max_load=self.configuration["max_load"],
+        )
 
     def run(self) -> None:
         global_min_fit = inf
@@ -142,7 +150,9 @@ class Algorithm:
             # offspring
             g = 0
             stall = 0
-            while stall < self.configuration["max_stall"] and g < (self.configuration["max_evals"] - self.configuration["pop_size"]):
+            while stall < self.configuration["max_stall"] and g < (
+                self.configuration["max_evals"] - self.configuration["pop_size"]
+            ):
                 # generate offspring
                 offspring = list(map(self.toolbox.clone, self.toolbox.select(pop, self.configuration["pop_size"])))  # type: ignore
 
@@ -193,7 +203,7 @@ class Algorithm:
             global_fits.append(min_fit)
 
         # stores best info ever on algorithm itself
-        self.routes.append(global_min_route)
+        self.route = global_min_route
         self.min_trends.append(global_min_trend)
         self.avg_trends.append(global_avg_trend)
 
@@ -203,27 +213,26 @@ class Algorithm:
         self.stats.append({"min": global_min_fit, "mean": mean, "std": std})
 
     def plotRoute(self) -> None:
-        for route in self.routes:
-            route = deepcopy(route)
+        route = deepcopy(self.route)
 
-            route = Algorithm.getRoute(route, self.orders, self.configuration["max_load"])
+        route = Algorithm.getRoute(route, self.orders, self.configuration["max_load"])
 
-            X = []
-            Y = []
-            L = []
+        X = []
+        Y = []
+        L = []
 
-            for i in range(len(route)):
-                route[i] += 1
+        for i in range(len(route)):
+            route[i] += 1
 
-            for location in route:
-                X.append(int(self.coordinates[location][0]))
-                Y.append(int(self.coordinates[location][1]))
-                L.append(location)
+        for location in route:
+            X.append(int(self.coordinates[location][0]))
+            Y.append(int(self.coordinates[location][1]))
+            L.append(location)
 
-            plt.plot(X, Y, "-o")
+        plt.plot(X, Y, "-o")
 
-            for i, txt in enumerate(L):
-                plt.annotate(txt, (X[i], Y[i]))
+        for i, txt in enumerate(L):
+            plt.annotate(txt, (X[i], Y[i]))
 
         plt.show()
 
@@ -245,9 +254,6 @@ class Algorithm:
             print("Min: %s" % stat["min"])
             print("Mean: %s" % stat["mean"])
             print("Std: %s" % stat["std"])
-
-    def resetRoute(self) -> None:
-        self.routes = []
 
     def reset_trends(self) -> None:
         self.min_trends = []
@@ -281,8 +287,9 @@ if __name__ == "__main__":
     algorithm.run()
 
     algorithm.printStats()
-    
+
     algorithm.plotRoute()
-    
+
     algorithm.plotAvgTrends()
     
+    algorithm.plotMinTrends()
