@@ -81,6 +81,23 @@ def getDistance(route, dist_matrix):
 
     return distance
 
+def getCost(route, dist_matrix, max_load):
+    cost = 0
+
+    capacity = max_load
+
+    for prev_place, current_place in zip(route[:-1], route[1:]):
+        cost += dist_matrix[prev_place + 1][current_place + 1] * capacity
+        
+        load = int(orders_matrix.loc[orders_matrix["Customer"] == current_place + 1]["Orders"])
+
+        if load == 0:
+            capacity = max_load
+
+        capacity -= load
+
+    return cost
+
 
 def evalRoute(individual, orders_matrix, dist_matrix, max_load):
 
@@ -89,6 +106,18 @@ def evalRoute(individual, orders_matrix, dist_matrix, max_load):
     distance = getDistance(route, dist_matrix)
 
     return (distance,)
+
+def evalRouteMulti(individual, orders_matrix, dist_matrix, max_load):
+
+    route = getRoute(individual, orders_matrix, max_load)
+
+    distance = getDistance(route, dist_matrix)
+
+    cost = getCost(route,dist_matrix, max_load)
+
+    return (distance,cost)
+
+
 
 
 def algorithm(toolbox, population_size, mutation_prob, crossover_prob, max_stall, max_evals, seed, verbose=False):
