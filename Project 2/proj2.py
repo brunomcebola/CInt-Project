@@ -58,7 +58,7 @@ class Algorithm:
         return distance
 
     @classmethod
-    def getCost(route, dist_matrix, max_load):
+    def getCost(route, dist_matrix, max_load, orders_matrix):
         cost = 0
 
         capacity = max_load
@@ -76,22 +76,22 @@ class Algorithm:
         return cost
 
     @classmethod
-    def evalRoute(self,individual, orders_matrix, dist_matrix, max_load):
+    def evalRoute(self,individual, orders, distances, max_load):
 
-        route = self.getRoute(individual, orders_matrix, max_load)
+        route = self.getRoute(individual, orders, max_load)
 
-        distance = self.getDistance(route, dist_matrix)
+        distance = self.getDistance(route, distances)
 
         return (distance,)
 
     @classmethod
-    def evalRouteMulti(self,individual, orders_matrix, dist_matrix, max_load):
+    def evalRouteMulti(self,individual, orders, distances, max_load):
 
-        route = self.getRoute(individual, orders_matrix, max_load)
+        route = self.getRoute(individual, orders, max_load)
 
-        distance = self.getDistance(route, dist_matrix)
+        distance = self.getDistance(route, distances)
 
-        cost = self.getCost(route,dist_matrix, max_load)
+        cost = self.getCost(route,distances, max_load)
 
         return (distance,cost)
 
@@ -199,7 +199,7 @@ class Algorithm:
             self.toolbox.register("select", tools.selNSGA2) # params: individuals, k (number of individuals to select)
             self.toolbox.register(
                 "evaluate",
-                Algorithm.evalRoute,
+                Algorithm.evalRouteMulti,
                 orders=self.orders,
                 distances=self.distances,
                 max_load=self.configuration["max_load"],
@@ -208,7 +208,7 @@ class Algorithm:
             self.toolbox.register("select", tools.selTournament, tournsize=2)
             self.toolbox.register(
                 "evaluate",
-                Algorithm.evalRouteMulti,
+                Algorithm.evalRoute,
                 orders=self.orders,
                 distances=self.distances,
                 max_load=self.configuration["max_load"],
