@@ -3,7 +3,7 @@ import random
 import itertools
 import matplotlib.pyplot as plt
 
-from math import degrees, atan2, inf
+from math import degrees, atan2, inf, dist
 from deap import base
 from deap import tools
 from deap import creator
@@ -73,7 +73,7 @@ class Algorithm:
         "cross_prob": 0.5,
         #
         "max_load": 1000,
-        "max_stall": inf,  # TODO: mudar para inf
+        "max_stall": inf,
         "max_evals": 10000,
         #
         "heuristic": False,
@@ -82,7 +82,8 @@ class Algorithm:
 
     # aux functions
 
-    def heuristic(self):
+    # Heuristic using angles
+    def heuristic(self) -> list:
         # Point that will be our focus
         focus_point = random.randrange(self.configuration["nb_costumers"])
 
@@ -105,7 +106,31 @@ class Algorithm:
         individual = np.argsort(angles)
 
         # Return our selection
-        return individual
+        return list(individual)
+
+    # Heuristic with distances
+    # def heuristic(self) -> list:
+    #     sorted_points = []
+
+    #     current_point_id = random.randrange(self.configuration["nb_costumers"])
+    #     sorted_points.append(current_point_id)
+
+    #     while len(sorted_points) != self.configuration["nb_costumers"]:
+    #         closest_point_id = current_point_id
+    #         closest_point_dist = inf
+
+    #         for point_id in range(self.configuration["nb_costumers"]):
+    #             if point_id in sorted_points:
+    #                 continue
+
+    #             if dist(self.coordinates[current_point_id + 1], self.coordinates[point_id + 1]) < closest_point_dist:
+    #                 closest_point_id = point_id
+    #                 closest_point_dist = dist(self.coordinates[current_point_id + 1], self.coordinates[point_id + 1])
+
+    #         current_point_id = closest_point_id
+    #         sorted_points.append(closest_point_id)
+
+    #     return sorted_points
 
     def getRoute(self, individual) -> list:
         load = 0
@@ -205,7 +230,7 @@ class Algorithm:
 
     # init class
 
-    def __init__(self, config: dict, orders: list, distances: list, coordinates: list) -> None:
+    def __init__(self, config: dict, orders: list, distances: list, coordinates: list) -> None:      
         self.toolbox = base.Toolbox()
 
         creator.create("FitnessMin", base.Fitness, weights=(-1.0,))
@@ -350,5 +375,5 @@ if __name__ == "__main__":
     print(stats)
 
     plotRoute(min_route, coordinates)
-    
+
     plotTrends([min_trend])
