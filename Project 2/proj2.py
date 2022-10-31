@@ -3,7 +3,7 @@ import random
 import itertools
 import matplotlib.pyplot as plt
 
-from math import *
+from math import degrees, atan2, inf
 from deap import base
 from deap import tools
 from deap import creator
@@ -11,6 +11,56 @@ from copy import deepcopy
 
 import aux_functions as aux
 import numpy as np
+
+
+def findangles(centroid, list_of_points, focus_point):
+    # for not it used the first point, but we can make it to use the left,
+    # just need to search it and "remove it" from the list
+    angles = []
+
+    for point in list_of_points:
+        vec_a = (centroid[0] - list_of_points[focus_point][0], centroid[1] - list_of_points[focus_point][1])
+        vec_b = (centroid[0] - point[0], centroid[1] - point[1])
+
+        diff_angle = degrees(atan2(vec_b[1], vec_b[0])) - degrees(atan2(vec_a[1], vec_a[0]))
+
+        if diff_angle < 0:
+            diff_angle += 360
+
+        angles.append(diff_angle)
+
+    return np.array(angles)
+
+
+def plotTrends(trends):
+    for trend in trends:
+        plt.plot(list(range(len(trend))), trend)
+
+    plt.show()
+
+
+def plotRoute(route, coordinates):
+    route = deepcopy(route)
+
+    X = []
+    Y = []
+    L = []
+
+    for i in range(len(route)):
+        route[i] += 1
+
+    for location in route:
+        X.append(int(coordinates[location][0]))
+        Y.append(int(coordinates[location][1]))
+        L.append(location)
+
+    plt.plot(X, Y, "-o")
+
+    for i, txt in enumerate(L):
+        plt.annotate(txt, (X[i], Y[i]))
+
+    plt.show()
+
 
 class Algorithm:
     configuration = {
@@ -23,22 +73,48 @@ class Algorithm:
         "cross_prob": 0.5,
         #
         "max_load": 1000,
-        "max_stall": 20,  # TODO: mudar para inf
+        "max_stall": inf,  # TODO: mudar para inf
         "max_evals": 10000,
         #
-        "heuristic":False,
+        "heuristic": False,
         "multi_objective": False,
     }
 
-    @classmethod
-    def getRoute(cls, individual, orders, max_load) -> list:
+    # aux functions
+
+    def heuristic(self):
+        # Point that will be our focus
+        focus_point = random.randrange(self.configuration["nb_costumers"])
+
+        # Calculate centroid to have 2 common points everytime
+        centroid_x = centroid_y = 0
+
+        for point in self.coordinates[1 : (self.configuration["nb_costumers"] + 1)]:
+            centroid_x += point[0]
+            centroid_y += point[1]
+
+        centroid = (
+            centroid_x / self.configuration["nb_costumers"],
+            centroid_y / self.configuration["nb_costumers"],
+        )
+
+        # List of points no including the warehouse
+        angles = findangles(centroid, self.coordinates[1 : (self.configuration["nb_costumers"] + 1)], focus_point)
+
+        # Order it
+        individual = np.argsort(angles)
+
+        # Return our selection
+        return individual
+
+    def getRoute(self, individual) -> list:
         load = 0
         route = [-1]
 
         for location in individual:
-            load += int(orders[location + 1])
+            load += int(self.orders[location + 1])
 
-            if load > max_load:
+            if load > self.configuration["max_load"]:
                 route.append(-1)
                 load = 0
 
@@ -48,142 +124,67 @@ class Algorithm:
 
         return route
 
-    @classmethod
-    def getDistance(cls, route, distances) -> int:
+    def getDistance(self, route) -> int:
         distance = 0
 
         for prev_place, current_place in zip(route[:-1], route[1:]):
-            distance += distances[prev_place + 1][current_place + 1]
+            distance += self.distances[prev_place + 1][current_place + 1]
 
         return distance
 
-    @classmethod
-    def getCost(cls,route, orders,distances, max_load):
+    def getCost(self, route):
         cost = 0
 
-        capacity = max_load
+        capacity = self.configuration["max_load"]
 
         for prev_place, current_place in zip(route[:-1], route[1:]):
+
+            if capacity < self.orders[current_place + 1]:
+                capacity = self.configuration["max_load"]
+
             cost += distances[prev_place + 1][current_place + 1] * capacity
-            
-            load = int(orders.loc[orders["Customer"] == current_place + 1]["Orders"])
 
-            if load == 0:
-                capacity = max_load
-
-            capacity -= load
+            capacity -= self.orders[current_place + 1]
 
         return cost
 
-    @classmethod
-    def evalRoute(cls,individual, orders, distances, max_load):
+    def evalSingle(self, individual):
 
-        route = Algorithm.getRoute(individual, orders, max_load)
+        route = self.getRoute(individual)
 
-        distance = Algorithm.getDistance(route, distances)
+        distance = self.getDistance(route)
 
         return (distance,)
 
-    @classmethod
-    def evalRouteMulti(cls,individual, orders, distances, max_load):
+    def evalRouteMulti(self, individual):
 
-        route =  Algorithm.getRoute(individual, orders, max_load)
+        route = self.getRoute(individual)
 
-        distance = Algorithm.getDistance(route, distances)
+        distance = self.getDistance(route)
 
-        cost = Algorithm.getCost(route,orders,distances, max_load)
+        cost = self.getCost(route)
 
-        return (distance,cost)
+        return (distance, cost)
 
-    # Heuristic
-    @classmethod
-    def findangles(cls,centroid, list_of_points, focus_point):
-        # for not it used the first point, but we can make it to use the left,
-        # just need to search it and "remove it" from the list
-        angles = []
+    # setter functions
 
-        for point in list_of_points:
-            vec_a = (centroid[0] - list_of_points[focus_point][0],centroid[1] - list_of_points[focus_point][1] )
-            vec_b = (centroid[0] - point[0],centroid[1] - point[1])
-
-            diff_angle = degrees(atan2(vec_b[1], vec_b[0])) - degrees(atan2(vec_a[1], vec_a[0]))
-
-            if  diff_angle < 0:
-                diff_angle += 360              
-
-            angles.append( diff_angle )
-
-        return angles
-        
-    @classmethod
-    def counter_clock_wise_heuristic(cls,list_of_points, maximum_number):
-        # list_of_points has to contain WareHouse as well
-
-        # Point that will be our focus
-        focus_point = random.randrange(maximum_number)
-
-        # Calculate centroid to have 2 common points everytime
-        centroid_x = centroid_y = 0
-
-        for index, point in enumerate(list_of_points[1:]):
-            if index == 0:
-                continue
-            centroid_x += point[0]
-            centroid_y += point[1]
-
-        centroid = (centroid_x/(len(list_of_points)-1),centroid_y/(len(list_of_points)-1) )
-        # List of points no including the warehouse
-        angles = Algorithm.findangles(centroid, list_of_points, focus_point)
-        # Order it
-        angles = np.array(angles)
-
-        angles_sorted = np.argsort(angles)
-
-        for value in range(len(angles_sorted)):
-            angles_sorted[value] -= 1 
-            
-        # Return our selection
-        return angles_sorted
-
-    def __init__(self, config: dict, orders: list = [], distances: list = [], coordinates: list = []) -> None:
-        self.stats = []
-        self.route = []
-        self.min_trends = []
-        self.avg_trends = []
-
-        self.toolbox = base.Toolbox()
-
-        creator.create("FitnessMin", base.Fitness, weights=(-1.0,))
-        creator.create("Individual", list, fitness=creator.FitnessMin)  # type: ignore
-
-        self.set_configuration(config)
-
-        self.set_orders(orders)
-        self.set_distances(distances)
-        self.set_coordinates(coordinates)
-
-        self.register_toolbox()
-
-    def set_configuration(self, config: dict = {}) -> None:
+    def set_configuration(self, config: dict) -> None:
         for key in config:
             if key in self.configuration:
                 self.configuration[key] = config[key]
 
-    def set_orders(self, orders: list = []) -> None:
+    def set_orders(self, orders: list) -> None:
         self.orders = orders
 
-    def set_coordinates(self, coordinates: list = []) -> None:
-        self.coordinates = coordinates
-
-    def set_distances(self, distances: list = []) -> None:
+    def set_distances(self, distances: list) -> None:
         self.distances = distances
 
-    def register_toolbox(self) -> None:
+    def set_coordinates(self, coordinates: list) -> None:
+        self.coordinates = coordinates
 
+    def set_toolbox(self) -> None:
         if self.configuration["heuristic"] == True:
-            self.toolbox.register(
-            "location", self.counter_clock_wise_heuristic, self.coordinates, self.configuration["nb_costumers"]
-        )
+            self.toolbox.register("location", self.heuristic)
         else:
             self.toolbox.register(
                 "location", random.sample, range(self.configuration["nb_costumers"]), self.configuration["nb_costumers"]
@@ -196,31 +197,37 @@ class Algorithm:
         self.toolbox.register("mutate", tools.mutShuffleIndexes, indpb=0.05)
 
         if self.configuration["multi_objective"] == True:
-            self.toolbox.register("select", tools.selNSGA2) # params: individuals, k (number of individuals to select)
-            self.toolbox.register(
-                "evaluate",
-                Algorithm.evalRouteMulti,
-                orders=self.orders,
-                distances=self.distances,
-                max_load=self.configuration["max_load"],
-            )
+            self.toolbox.register("select", tools.selNSGA2)  # params: individuals, k (number of individuals to select)
+            self.toolbox.register("evaluate", self.evalRouteMulti)
         else:
             self.toolbox.register("select", tools.selTournament, tournsize=2)
-            self.toolbox.register(
-                "evaluate",
-                Algorithm.evalRoute,
-                orders=self.orders,
-                distances=self.distances,
-                max_load=self.configuration["max_load"],
-            )
+            self.toolbox.register("evaluate", self.evalSingle)
 
-    def run(self) -> None:
+    # init class
+
+    def __init__(self, config: dict, orders: list, distances: list, coordinates: list) -> None:
+        self.toolbox = base.Toolbox()
+
+        creator.create("FitnessMin", base.Fitness, weights=(-1.0,))
+        creator.create("Individual", list, fitness=creator.FitnessMin)  # type: ignore
+
+        self.set_configuration(config)
+
+        self.set_orders(orders)
+        self.set_distances(distances)
+        self.set_coordinates(coordinates)
+
+        self.set_toolbox()
+
+    # run algorithm
+
+    def run(self) -> tuple:
         global_min_fit = inf
 
-        global_fits = []
         global_min_route = []
         global_min_trend = []
         global_avg_trend = []
+        global_stats = {}
 
         # test algorithm for different seeds
         for seed in range(self.configuration["iterations"]):
@@ -228,6 +235,7 @@ class Algorithm:
             min_route = []
             min_trend = []
             avg_trend = []
+            stats = {}
 
             random.seed(seed)
 
@@ -244,6 +252,11 @@ class Algorithm:
 
             min_fit = min(fits)
             min_route = tools.selBest(pop, 1)[0]
+
+            mean = sum(fits) / len(fits)
+            std = abs((sum(x * x for x in fits)) / self.configuration["pop_size"] - mean**2) ** 0.5
+            stats = {"min": min(fits), "max": max(fits), "mean": mean, "std": std}
+
             min_trend.append(min(fits))
             avg_trend.append(sum(fits) / len(fits))
 
@@ -286,6 +299,11 @@ class Algorithm:
                 if min(fits) < min_fit:
                     min_fit = min(fits)
                     min_route = tools.selBest(pop, 1)[0]
+
+                    mean = sum(fits) / len(fits)
+                    std = abs((sum(x * x for x in fits)) / self.configuration["pop_size"] - mean**2) ** 0.5
+                    stats = {"min": min_fit, "max": max(fits), "mean": mean, "std": std}
+
                     stall = 0
                 else:
                     stall += 1
@@ -299,68 +317,11 @@ class Algorithm:
                 global_min_route = min_route
                 global_min_trend = min_trend
                 global_avg_trend = avg_trend
+                global_stats = stats
 
-            global_fits.append(min_fit)
+        global_min_route = self.getRoute(global_min_route)
 
-        # stores best info ever on algorithm itself
-        self.route = global_min_route
-        self.min_trends.append(global_min_trend)
-        self.avg_trends.append(global_avg_trend)
-
-        # stores stats
-        mean = sum(global_fits) / len(global_fits)
-        std = abs((sum(x * x for x in global_fits)) / self.configuration["pop_size"] - mean**2) ** 0.5
-        self.stats.append({"min": global_min_fit, "mean": mean, "std": std})
-
-    def plotRoute(self) -> None:
-        route = deepcopy(self.route)
-
-        route = Algorithm.getRoute(route, self.orders, self.configuration["max_load"])
-
-        X = []
-        Y = []
-        L = []
-
-        for i in range(len(route)):
-            route[i] += 1
-
-        for location in route:
-            X.append(int(self.coordinates[location][0]))
-            Y.append(int(self.coordinates[location][1]))
-            L.append(location)
-
-        plt.plot(X, Y, "-o")
-
-        for i, txt in enumerate(L):
-            plt.annotate(txt, (X[i], Y[i]))
-
-        plt.show()
-
-    def plotMinTrends(self) -> None:
-        for trend in self.min_trends:
-            plt.plot(list(range(len(trend))), trend)
-
-        plt.show()
-
-    def plotAvgTrends(self) -> None:
-        for trend in self.avg_trends:
-            plt.plot(list(range(len(trend))), trend)
-
-        plt.show()
-
-    def printStats(self) -> None:
-        for stat in self.stats:
-            print(stat)
-            print("Min: %s" % stat["min"])
-            print("Mean: %s" % stat["mean"])
-            print("Std: %s" % stat["std"])
-
-    def reset_trends(self) -> None:
-        self.min_trends = []
-        self.avg_trends = []
-
-    def reset_stats(self) -> None:
-        self.stats = []
+        return (global_min_route, global_min_trend, global_avg_trend, global_stats)
 
 
 if __name__ == "__main__":
@@ -384,12 +345,10 @@ if __name__ == "__main__":
 
     algorithm = Algorithm(config, orders, distances, coordinates)
 
-    algorithm.run()
+    min_route, min_trend, avg_trend, stats = algorithm.run()
 
-    algorithm.printStats()
+    print(stats)
 
-    algorithm.plotRoute()
-
-    algorithm.plotAvgTrends()
+    plotRoute(min_route, coordinates)
     
-    algorithm.plotMinTrends()
+    plotTrends([min_trend])
