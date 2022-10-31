@@ -58,13 +58,42 @@ class Algorithm:
         return distance
 
     @classmethod
-    def evalRoute(cls, individual, orders, distances, max_load) -> tuple:
+    def getCost(route, dist_matrix, max_load):
+        cost = 0
 
-        route = Algorithm.getRoute(individual, orders, max_load)
+        capacity = max_load
 
-        distance = Algorithm.getDistance(route, distances)
+        for prev_place, current_place in zip(route[:-1], route[1:]):
+            cost += dist_matrix[prev_place + 1][current_place + 1] * capacity
+            
+            load = int(orders_matrix.loc[orders_matrix["Customer"] == current_place + 1]["Orders"])
+
+            if load == 0:
+                capacity = max_load
+
+            capacity -= load
+
+        return cost
+
+    @classmethod
+    def evalRoute(self,individual, orders_matrix, dist_matrix, max_load):
+
+        route = self.getRoute(individual, orders_matrix, max_load)
+
+        distance = self.getDistance(route, dist_matrix)
 
         return (distance,)
+
+    @classmethod
+    def evalRouteMulti(self,individual, orders_matrix, dist_matrix, max_load):
+
+        route = self.getRoute(individual, orders_matrix, max_load)
+
+        distance = self.getDistance(route, dist_matrix)
+
+        cost = self.getCost(route,dist_matrix, max_load)
+
+        return (distance,cost)
 
     # Heuristic
     @classmethod
@@ -164,21 +193,26 @@ class Algorithm:
         self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)  # type: ignore
 
         self.toolbox.register("mate", tools.cxPartialyMatched)
+        self.toolbox.register("mutate", tools.mutShuffleIndexes, indpb=0.05)
 
         if self.configuration["multi_objective"] == True:
             self.toolbox.register("select", tools.selNSGA2) # params: individuals, k (number of individuals to select)
-
+            self.toolbox.register(
+                "evaluate",
+                Algorithm.evalRoute,
+                orders=self.orders,
+                distances=self.distances,
+                max_load=self.configuration["max_load"],
+            )
         else:
             self.toolbox.register("select", tools.selTournament, tournsize=2)
-
-        self.toolbox.register("mutate", tools.mutShuffleIndexes, indpb=0.05)
-        self.toolbox.register(
-            "evaluate",
-            Algorithm.evalRoute,
-            orders=self.orders,
-            distances=self.distances,
-            max_load=self.configuration["max_load"],
-        )
+            self.toolbox.register(
+                "evaluate",
+                Algorithm.evalRouteMulti,
+                orders=self.orders,
+                distances=self.distances,
+                max_load=self.configuration["max_load"],
+            )
 
     def run(self) -> None:
         global_min_fit = inf
