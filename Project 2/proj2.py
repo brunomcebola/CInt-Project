@@ -58,15 +58,15 @@ class Algorithm:
         return distance
 
     @classmethod
-    def getCost(route, dist_matrix, max_load, orders_matrix):
+    def getCost(cls,route, orders,distances, max_load):
         cost = 0
 
         capacity = max_load
 
         for prev_place, current_place in zip(route[:-1], route[1:]):
-            cost += dist_matrix[prev_place + 1][current_place + 1] * capacity
+            cost += distances[prev_place + 1][current_place + 1] * capacity
             
-            load = int(orders_matrix.loc[orders_matrix["Customer"] == current_place + 1]["Orders"])
+            load = int(orders.loc[orders["Customer"] == current_place + 1]["Orders"])
 
             if load == 0:
                 capacity = max_load
@@ -76,28 +76,28 @@ class Algorithm:
         return cost
 
     @classmethod
-    def evalRoute(self,individual, orders, distances, max_load):
+    def evalRoute(cls,individual, orders, distances, max_load):
 
-        route = self.getRoute(individual, orders, max_load)
+        route = Algorithm.getRoute(individual, orders, max_load)
 
-        distance = self.getDistance(route, distances)
+        distance = Algorithm.getDistance(route, distances)
 
         return (distance,)
 
     @classmethod
-    def evalRouteMulti(self,individual, orders, distances, max_load):
+    def evalRouteMulti(cls,individual, orders, distances, max_load):
 
-        route = self.getRoute(individual, orders, max_load)
+        route =  Algorithm.getRoute(individual, orders, max_load)
 
-        distance = self.getDistance(route, distances)
+        distance = Algorithm.getDistance(route, distances)
 
-        cost = self.getCost(route,distances, max_load)
+        cost = Algorithm.getCost(route,orders,distances, max_load)
 
         return (distance,cost)
 
     # Heuristic
     @classmethod
-    def findangles(self,centroid, list_of_points, focus_point):
+    def findangles(cls,centroid, list_of_points, focus_point):
         # for not it used the first point, but we can make it to use the left,
         # just need to search it and "remove it" from the list
         angles = []
@@ -116,7 +116,7 @@ class Algorithm:
         return angles
         
     @classmethod
-    def counter_clock_wise_heuristic(self,list_of_points, maximum_number):
+    def counter_clock_wise_heuristic(cls,list_of_points, maximum_number):
         # list_of_points has to contain WareHouse as well
 
         # Point that will be our focus
@@ -133,7 +133,7 @@ class Algorithm:
 
         centroid = (centroid_x/(len(list_of_points)-1),centroid_y/(len(list_of_points)-1) )
         # List of points no including the warehouse
-        angles = self.findangles(centroid, list_of_points, focus_point)
+        angles = Algorithm.findangles(centroid, list_of_points, focus_point)
         # Order it
         angles = np.array(angles)
 
