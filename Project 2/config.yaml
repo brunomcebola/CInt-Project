@@ -2,4 +2,6 @@ dist_file: CustDist_WHCentral.csv
 coord_file: CustXY_WHCentral.csv
 orders_file: CustOrd.csv
 
-nb_costumers: 10
+nb_costumers: 50
+
+heuristic: false

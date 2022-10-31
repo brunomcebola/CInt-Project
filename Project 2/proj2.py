@@ -3,14 +3,14 @@ import random
 import itertools
 import matplotlib.pyplot as plt
 
-from math import inf
+from math import *
 from deap import base
 from deap import tools
 from deap import creator
 from copy import deepcopy
 
 import aux_functions as aux
-
+import numpy as np
 
 class Algorithm:
     configuration = {
@@ -25,6 +25,8 @@ class Algorithm:
         "max_load": 1000,
         "max_stall": 20,  # TODO: mudar para inf
         "max_evals": 10000,
+        #
+        "heuristic":False
     }
 
     @classmethod
@@ -63,6 +65,56 @@ class Algorithm:
 
         return (distance,)
 
+    # Heuristic
+    @classmethod
+    def findangles(self,centroid, list_of_points, focus_point):
+        # for not it used the first point, but we can make it to use the left,
+        # just need to search it and "remove it" from the list
+        angles = []
+
+        for point in list_of_points:
+            vec_a = (centroid[0] - list_of_points[focus_point][0],centroid[1] - list_of_points[focus_point][1] )
+            vec_b = (centroid[0] - point[0],centroid[1] - point[1])
+
+            diff_angle = degrees(atan2(vec_b[1], vec_b[0])) - degrees(atan2(vec_a[1], vec_a[0]))
+
+            if  diff_angle < 0:
+                diff_angle += 360              
+
+            angles.append( diff_angle )
+
+        return angles
+        
+    @classmethod
+    def counter_clock_wise_heuristic(self,list_of_points, maximum_number):
+        # list_of_points has to contain WareHouse as well
+
+        # Point that will be our focus
+        focus_point = random.randrange(maximum_number)
+
+        # Calculate centroid to have 2 common points everytime
+        centroid_x = centroid_y = 0
+
+        for index, point in enumerate(list_of_points[1:]):
+            if index == 0:
+                continue
+            centroid_x += point[0]
+            centroid_y += point[1]
+
+        centroid = (centroid_x/(len(list_of_points)-1),centroid_y/(len(list_of_points)-1) )
+        # List of points no including the warehouse
+        angles = self.findangles(centroid, list_of_points, focus_point)
+        # Order it
+        angles = np.array(angles)
+
+        angles_sorted = np.argsort(angles)
+
+        for value in range(len(angles_sorted)):
+            angles_sorted[value] -= 1 
+            
+        # Return our selection
+        return angles_sorted
+
     def __init__(self, config: dict, orders: list = [], distances: list = [], coordinates: list = []) -> None:
         self.stats = []
         self.route = []
@@ -97,9 +149,16 @@ class Algorithm:
         self.distances = distances
 
     def register_toolbox(self) -> None:
-        self.toolbox.register(
-            "location", random.sample, range(self.configuration["nb_costumers"]), self.configuration["nb_costumers"]
+
+        if self.configuration["heuristic"] == True:
+            self.toolbox.register(
+            "location", self.counter_clock_wise_heuristic, self.coordinates, self.configuration["nb_costumers"]
         )
+        else:
+            self.toolbox.register(
+                "location", random.sample, range(self.configuration["nb_costumers"]), self.configuration["nb_costumers"]
+            )
+
         self.toolbox.register("individual", tools.initIterate, creator.Individual, self.toolbox.location)  # type: ignore
         self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)  # type: ignore
 
