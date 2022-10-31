@@ -26,7 +26,8 @@ class Algorithm:
         "max_stall": 20,  # TODO: mudar para inf
         "max_evals": 10000,
         #
-        "heuristic":False
+        "heuristic":False,
+        "multi_objective": False,
     }
 
     @classmethod
@@ -163,7 +164,13 @@ class Algorithm:
         self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)  # type: ignore
 
         self.toolbox.register("mate", tools.cxPartialyMatched)
-        self.toolbox.register("select", tools.selTournament, tournsize=2)
+
+        if self.configuration["multi_objective"] == True:
+            self.toolbox.register("select", tools.selNSGA2) # params: individuals, k (number of individuals to select)
+
+        else:
+            self.toolbox.register("select", tools.selTournament, tournsize=2)
+
         self.toolbox.register("mutate", tools.mutShuffleIndexes, indpb=0.05)
         self.toolbox.register(
             "evaluate",
