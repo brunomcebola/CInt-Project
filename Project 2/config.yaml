@@ -6,4 +6,4 @@ nb_costumers: 50
 
 heuristic: false
 
-multi_objective: true
+multi_objective: false

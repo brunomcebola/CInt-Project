@@ -85,7 +85,17 @@ class Algorithm:
     # Heuristic using angles
     def heuristic(self) -> list:
         # Point that will be our focus
-        focus_point = random.randrange(self.configuration["nb_costumers"])
+
+        # focus_point = random.randrange(self.configuration["nb_costumers"])
+        closest_point_dist = inf
+        closest_point_id = 0
+
+        for point_id in range(self.configuration["nb_costumers"]):
+            if dist(self.coordinates[0], self.coordinates[point_id + 1]) < closest_point_dist:
+                closest_point_id = point_id
+                closest_point_dist = dist(self.coordinates[0], self.coordinates[point_id + 1])
+
+        focus_point = closest_point_id
 
         # Calculate centroid to have 2 common points everytime
         centroid_x = centroid_y = 0
@@ -98,6 +108,7 @@ class Algorithm:
             centroid_x / self.configuration["nb_costumers"],
             centroid_y / self.configuration["nb_costumers"],
         )
+
 
         # List of points no including the warehouse
         angles = findangles(centroid, self.coordinates[1 : (self.configuration["nb_costumers"] + 1)], focus_point)
@@ -227,8 +238,6 @@ class Algorithm:
         # ORIGINAL
         self.toolbox.register("mate", tools.cxPartialyMatched)
         
-
-        # self.toolbox.register("mutate", tools.mutGaussian,mu=0,sigma=1, indpb=0.05)
         self.toolbox.register("mutate", tools.mutShuffleIndexes, indpb=0.05)
         
         if self.configuration["multi_objective"] == True:
