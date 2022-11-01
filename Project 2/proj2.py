@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from math import degrees, atan2, inf, dist
 from deap import base
 from deap import tools
-from deap import creator
+from deap import creator, algorithms
 from copy import deepcopy
 
 import aux_functions as aux
@@ -217,10 +217,20 @@ class Algorithm:
 
         self.toolbox.register("individual", tools.initIterate, creator.Individual, self.toolbox.location)  # type: ignore
         self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)  # type: ignore
+        
+        # This just makes some points go missing (???) 
+        # self.toolbox.register("mate", tools.cxOnePoint)
 
+        # This reaches a result a bit worse, BUT, the evolution is much better
+        # self.toolbox.register("mate", tools.cxUniformPartialyMatched, indpb=0.01)
+        
+        # ORIGINAL
         self.toolbox.register("mate", tools.cxPartialyMatched)
-        self.toolbox.register("mutate", tools.mutShuffleIndexes, indpb=0.05)
+        
 
+        # self.toolbox.register("mutate", tools.mutGaussian,mu=0,sigma=1, indpb=0.05)
+        self.toolbox.register("mutate", tools.mutShuffleIndexes, indpb=0.05)
+        
         if self.configuration["multi_objective"] == True:
             self.toolbox.register("select", tools.selNSGA2)  # params: individuals, k (number of individuals to select)
             self.toolbox.register("evaluate", self.evalRouteMulti)
@@ -233,7 +243,10 @@ class Algorithm:
     def __init__(self, config: dict, orders: list, distances: list, coordinates: list) -> None:      
         self.toolbox = base.Toolbox()
 
-        creator.create("FitnessMin", base.Fitness, weights=(-1.0,))
+        if config["multi_objective"] == True:
+            creator.create("FitnessMin", base.Fitness, weights=(-1.0,-1.0))
+        else:
+            creator.create("FitnessMin", base.Fitness, weights=(-1.0,))
         creator.create("Individual", list, fitness=creator.FitnessMin)  # type: ignore
 
         self.set_configuration(config)
@@ -246,7 +259,7 @@ class Algorithm:
 
     # run algorithm
 
-    def run(self) -> tuple:
+    def runSingle(self) -> tuple:
         global_min_fit = inf
 
         global_min_route = []
@@ -348,6 +361,128 @@ class Algorithm:
 
         return (global_min_route, global_min_trend, global_avg_trend, global_stats)
 
+    def runMulti(self) -> tuple:
+        global_min_fit = inf
+
+        global_min_route = []
+        global_min_trend = []
+        global_avg_trend = []
+        global_stats = {}
+
+        # test algorithm for different seeds
+        for seed in range(self.configuration["iterations"]):
+
+            random.seed(seed)
+            MU, LAMBDA = 100, 200
+            # generate initial population
+            pop = self.toolbox.population(n=self.configuration["pop_size"])  # type: ignore
+
+            hof = tools.ParetoFront()
+
+            stats = tools.Statistics(lambda ind: ind.fitness.values)
+
+            stats.register("avg", np.mean, axis=0)
+            stats.register("std", np.std, axis=0)
+            stats.register("min", np.min, axis=0)
+            stats.register("max", np.max, axis=0)
+            
+            pop, logbook = algorithms.eaMuPlusLambda(pop, self.toolbox, mu=MU, lambda_=LAMBDA,
+                                                    cxpb=0.7, mutpb=0.3, ngen=40, 
+                                                    stats=stats, halloffame=hof)
+            
+            return pop, logbook, hof
+
+            min_fit = inf
+            min_route = []
+            min_trend = []
+            avg_trend = []
+            stats = {}
+
+            random.seed(seed)
+
+            # generate initial population
+            pop = self.toolbox.population(n=self.configuration["pop_size"])  # type: ignore
+
+            # evaluate population
+            fitnesses = list(map(self.toolbox.evaluate, pop))  # type: ignore
+            for ind, fit in zip(pop, fitnesses):
+                ind.fitness.values = fit
+
+            # store best info
+            fits = [ind.fitness.values[0] for ind in pop]
+
+            min_fit = min(fits)
+            min_route = tools.selBest(pop, 1)[0]
+
+            mean = sum(fits) / len(fits)
+            std = abs((sum(x * x for x in fits)) / self.configuration["pop_size"] - mean**2) ** 0.5
+            stats = {"min": min(fits), "max": max(fits), "mean": mean, "std": std}
+
+            min_trend.append(min(fits))
+            avg_trend.append(sum(fits) / len(fits))
+
+            # offspring
+            g = 0
+            stall = 0
+            while stall < self.configuration["max_stall"] and g < (
+                self.configuration["max_evals"] - self.configuration["pop_size"]
+            ):
+                # generate offspring
+                offspring = list(map(self.toolbox.clone, self.toolbox.select(pop, self.configuration["pop_size"])))  # type: ignore
+
+                # mate
+                for child1, child2 in zip(offspring[::2], offspring[1::2]):
+                    if random.random() < self.configuration["cross_prob"]:
+                        self.toolbox.mate(child1, child2)  # type: ignore
+
+                        del child1.fitness.values
+                        del child2.fitness.values
+
+                # mutate
+                for mutant in offspring:
+                    if random.random() < self.configuration["mut_prob"]:
+                        self.toolbox.mutate(mutant)  # type: ignore
+                        del mutant.fitness.values
+
+                # evaluate offspring
+                invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
+                fitnesses = map(self.toolbox.evaluate, invalid_ind)  # type: ignore
+                g += len(invalid_ind)
+                for ind, fit in zip(invalid_ind, fitnesses):
+                    ind.fitness.values = fit
+
+                # replace population by offspring
+                pop[:] = offspring
+
+                # store best info
+                fits = [ind.fitness.values[0] for ind in pop]
+
+                if min(fits) < min_fit:
+                    min_fit = min(fits)
+                    min_route = tools.selBest(pop, 1)[0]
+
+                    mean = sum(fits) / len(fits)
+                    std = abs((sum(x * x for x in fits)) / self.configuration["pop_size"] - mean**2) ** 0.5
+                    stats = {"min": min_fit, "max": max(fits), "mean": mean, "std": std}
+
+                    stall = 0
+                else:
+                    stall += 1
+
+                min_trend.append(min(fits))
+                avg_trend.append(sum(fits) / len(fits))
+
+            # stores best info for all seeds
+            if min_fit < global_min_fit:
+                global_min_fit = min_fit
+                global_min_route = min_route
+                global_min_trend = min_trend
+                global_avg_trend = avg_trend
+                global_stats = stats
+
+        global_min_route = self.getRoute(global_min_route)
+
+        return (global_min_route, global_min_trend, global_avg_trend, global_stats)
 
 if __name__ == "__main__":
     # get config from yaml
@@ -368,12 +503,25 @@ if __name__ == "__main__":
     distances = aux.readCSV(config["dist_file"])
     coordinates = aux.readCSV(config["coord_file"])
 
-    algorithm = Algorithm(config, orders, distances, coordinates)
+    if config["multi_objective"] == True:
+        algorithm = Algorithm(config, orders, distances, coordinates)
 
-    min_route, min_trend, avg_trend, stats = algorithm.run()
+        pop, logbook, hof = algorithm.runMulti()
 
-    print(stats)
+        print(hof)
+        #print(stats)
 
-    plotRoute(min_route, coordinates)
+        #plotRoute(min_route, coordinates)
 
-    plotTrends([min_trend])
+        #plotTrends([min_trend])
+
+    else:
+        algorithm = Algorithm(config, orders, distances, coordinates)
+
+        min_route, min_trend, avg_trend, stats = algorithm.runSingle()
+
+        print(stats)
+
+        plotRoute(min_route, coordinates)
+
+        plotTrends([min_trend])
