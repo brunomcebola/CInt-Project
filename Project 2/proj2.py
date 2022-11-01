@@ -1,3 +1,4 @@
+import enum
 import sys
 import random
 import itertools
@@ -350,74 +351,18 @@ class Algorithm:
 
         return (global_min_route, global_min_trend, global_avg_trend, global_stats)
 
-    def myEaMuPlusLambda(self, population, _stats=None, _halloffame=None):
+    def runMulti(self) -> tuple:
         
+        # Needed variables
         mu = 40
         cxpb=0.7
         mutpb=0.3
         ngen=500
 
-        logbook = tools.Logbook()
-        logbook.header = ['gen', 'nevals', 'avg', 'std', 'min', 'hyper']
-
-        # Evaluate the individuals with an invalid fitness
-        invalid_ind = [ind for ind in population if not ind.fitness.valid]
-        fitnesses = self.toolbox.map(self.toolbox.evaluate, invalid_ind)
-        for ind, fit in zip(invalid_ind, fitnesses):
-            ind.fitness.values = fit
-
-         # This is just to assign the crowding distance to the individuals
-        # no actual selection is done
-        population = self.toolbox.select(population, len(population))
-
-        if _halloffame is not None:
-            _halloffame.update(population)
-
-        record = _stats.compile(population) if _stats is not None else {}
-        logbook.record(gen=0, nevals=len(invalid_ind), **record , hyper= hypervolume(population) )
-
-        total_eval = 0
-
-        # Begin the generational process
-        for gen in range(1, ngen + 1):
-
-            # Vary the population
-            offspring = tools.selTournamentDCD(population, len(population))
-            offspring = [self.toolbox.clone(ind) for ind in offspring]
-            offspring = algorithms.varAnd(population, self.toolbox, cxpb, mutpb)
-
-            # Evaluate the individuals with an invalid fitness
-            invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
-            fitnesses = self.toolbox.map(self.toolbox.evaluate, invalid_ind)
-
-            total_eval += len(invalid_ind)
-
-            # check if 10k evals reached
-            if total_eval >= self.configuration["max_evals"]:
-               break
-
-            for ind, fit in zip(invalid_ind, fitnesses):
-                ind.fitness.values = fit
-
-            # Update the hall of fame with the generated individuals
-            if _halloffame is not None:
-                _halloffame.update(offspring)
-
-            # Select the next generation population
-            population[:] = self.toolbox.select(population + offspring, mu)
-
-            # Update the statistics with the new population
-            record = _stats.compile(population) if _stats is not None else {}
-            logbook.record(gen=gen, nevals=len(invalid_ind), **record, hyper= hypervolume(population))
-
-        return population, logbook
-
-    def runMulti(self) -> tuple:
-
         # test algorithm for different seeds
-        for seed in range(self.configuration["iterations"]):
+        # for seed in range(self.configuration["iterations"]):
             
-            random.seed(29)
+        random.seed(35)
 
         # generate initial population
         pop = self.toolbox.population(n=self.configuration["pop_size"])  # type: ignore
@@ -429,33 +374,26 @@ class Algorithm:
         stats.register("avg", np.mean, axis=0)
         stats.register("std", np.std, axis=0)
         stats.register("min", np.min, axis=0)
-        ### NEW HERE ###
 
-        population = pop
-
-        mu = 40
-        cxpb=0.7
-        mutpb=0.3
-        ngen=500
-
+        # Algorithm
         logbook = tools.Logbook()
         logbook.header = ['gen', 'nevals', 'avg', 'std', 'min', 'hyper']
 
         # Evaluate the individuals with an invalid fitness
-        invalid_ind = [ind for ind in population if not ind.fitness.valid]
+        invalid_ind = [ind for ind in pop if not ind.fitness.valid]
         fitnesses = self.toolbox.map(self.toolbox.evaluate, invalid_ind)
         for ind, fit in zip(invalid_ind, fitnesses):
             ind.fitness.values = fit
 
          # This is just to assign the crowding distance to the individuals
         # no actual selection is done
-        population = self.toolbox.select(population, len(population))
+        pop = self.toolbox.select(pop, len(pop))
 
         if hof is not None:
-            hof.update(population)
+            hof.update(pop)
 
-        record = stats.compile(population) if stats is not None else {}
-        logbook.record(gen=0, nevals=len(invalid_ind), **record , hyper= hypervolume(population) )
+        record = stats.compile(pop) if stats is not None else {}
+        logbook.record(gen=0, nevals=len(invalid_ind), **record , hyper= hypervolume(pop) )
 
         total_eval = 0
 
@@ -463,9 +401,9 @@ class Algorithm:
         for gen in range(1, ngen + 1):
 
             # Vary the population
-            offspring = tools.selTournamentDCD(population, len(population))
+            offspring = tools.selTournamentDCD(pop, len(pop))
             offspring = [self.toolbox.clone(ind) for ind in offspring]
-            offspring = algorithms.varAnd(population, self.toolbox, cxpb, mutpb)
+            offspring = algorithms.varAnd(pop, self.toolbox, cxpb, mutpb)
 
             # Evaluate the individuals with an invalid fitness
             invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
@@ -485,15 +423,15 @@ class Algorithm:
                 hof.update(offspring)
 
             # Select the next generation population
-            population[:] = self.toolbox.select(population + offspring, mu)
+            pop[:] = self.toolbox.select(pop + offspring, mu)
 
             # Update the statistics with the new population
-            record = stats.compile(population) if stats is not None else {}
-            logbook.record(gen=gen, nevals=len(invalid_ind), **record, hyper= hypervolume(population))
+            record = stats.compile(pop) if stats is not None else {}
+            logbook.record(gen=gen, nevals=len(invalid_ind), **record, hyper= hypervolume(pop))
 
         #pop, logbook = algorithm.myEaMuPlusLambda(pop, _stats=stats, _halloffame=hof)
         
-        return population, logbook, hof
+        return pop, logbook, hof
 
 if __name__ == "__main__":
     # get config from yaml
@@ -519,22 +457,49 @@ if __name__ == "__main__":
 
         pop, logbook, hof = algorithm.runMulti()
 
-        print("HYPER")
-        print(logbook[317]['hyper'])
-        print("HOF")
-        print(hof)
+        
         pareto_front = []
 
         for points in hof:
             pareto_front.append(algorithm.evalRouteMulti(points))
+        print("NUMBER OF CUSTOMERS: " + str(config['nb_costumers']))
+        print()
+        print("Pareto Front:" + str(pareto_front))
+        print()
+        print("Min Cost:" + str(pareto_front[-1]))
+        print("Min Dist:" + str(pareto_front[0]))
 
-        print(pareto_front)
+        # Pareto Front
+        maxCost = pareto_front[0][1]
+        maxDist = pareto_front[-1][0]
 
-        #print(stats)
+        costNorm = []
+        distNorm = []
 
-        #plotRoute(min_route, coordinates)
+        for index, point in enumerate(pareto_front):
+            distNorm.append(pareto_front[index][0] / maxDist)
+            costNorm.append(pareto_front[index][1] / maxCost)
 
-        #plotTrends([min_trend])
+        # Hyper Volume
+        hypervolume = []
+
+        for index in range(logbook[-1]['gen'] + 1):
+            hypervolume.append(logbook[index]['hyper'])      
+
+        hypervolume_array = np.array(hypervolume)
+
+        max_hyper = np.max(hypervolume)  
+        for index, hyper in enumerate(hypervolume_array):
+            hypervolume_array[index] = hypervolume_array[index] / max_hyper 
+
+        plt.plot(list(range(len(hypervolume_array))), hypervolume_array)
+
+        plt.show()
+
+        plt.plot(costNorm,distNorm, 'o')
+
+        plt.show()
+        
 
     else:
         algorithm = Algorithm(config, orders, distances, coordinates)
