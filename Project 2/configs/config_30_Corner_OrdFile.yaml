@@ -3,3 +3,5 @@ coord_file: CustXY_WHCorner.csv
 orders_file: CustOrd.csv
 
 nb_costumers: 30
+
+multi_objective: false

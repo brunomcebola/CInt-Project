@@ -5,6 +5,8 @@ import itertools
 from tabnanny import verbose
 import matplotlib.pyplot as plt
 
+import os
+
 from math import degrees, atan2, inf, dist
 
 from deap.benchmarks.tools import hypervolume
@@ -393,7 +395,7 @@ class Algorithm:
             hof.update(pop)
 
         record = stats.compile(pop) if stats is not None else {}
-        logbook.record(gen=0, nevals=len(invalid_ind), **record , hyper= hypervolume(pop) )
+        logbook.record(gen=0, nevals=len(invalid_ind), **record , hyper= hypervolume(pop, [100000,1000000000]) )
 
         total_eval = 0
 
@@ -427,89 +429,132 @@ class Algorithm:
 
             # Update the statistics with the new population
             record = stats.compile(pop) if stats is not None else {}
-            logbook.record(gen=gen, nevals=len(invalid_ind), **record, hyper= hypervolume(pop))
+            logbook.record(gen=gen, nevals=len(invalid_ind), **record, hyper= hypervolume(pop, [100000,1000000000]))
 
         #pop, logbook = algorithm.myEaMuPlusLambda(pop, _stats=stats, _halloffame=hof)
         
         return pop, logbook, hof
 
+
+
+
+
 if __name__ == "__main__":
-    # get config from yaml
-    config = aux.read_yaml(sys.argv[1])
 
-    if "fill_orders" in config.keys():
-        aux.validate_config(config, ["dist_file", "coord_file"], sys.argv[1])
+    if sys.argv[1] == "--all":
+        customers_10 = [file for file in os.listdir("./configs/") if "_10_" in file]
+        customers_30 = [file for file in os.listdir("./configs/") if "_30_" in file]
+        customers_50 = [file for file in os.listdir("./configs/") if "_50_" in file]
+        allFiles = [customers_10, customers_30, customers_50]
+        for scope in allFiles:
+            trend = []
+            for file in scope:
+                # get config from yaml
+                config = aux.read_yaml("./configs/" + file)
+
+                if "fill_orders" in config.keys():
+                    aux.validate_config(config, ["dist_file", "coord_file"], sys.argv[1])
+                else:
+                    aux.validate_config(config, ["orders_file", "dist_file", "coord_file"], sys.argv[1])
+
+                # get data from csv
+                if "fill_orders" in config.keys():
+                    orders = [config["orders"] for i in range(config["nb_costumers"])]
+                    orders.insert(0, 0)
+                else:
+                    orders = list(itertools.chain(*aux.readCSV(config["orders_file"])))
+
+                distances = aux.readCSV(config["dist_file"])
+                coordinates = aux.readCSV(config["coord_file"])
+
+                algorithm = Algorithm(config, orders, distances, coordinates)
+
+                min_route, min_trend, avg_trend, stats = algorithm.runSingle()
+
+                print("---------------------")
+                print(file)
+
+                print(stats)
+                trend.append(min_trend)
+
+            plotTrends(trend)
     else:
-        aux.validate_config(config, ["orders_file", "dist_file", "coord_file"], sys.argv[1])
+        # get config from yaml
+        config = aux.read_yaml(sys.argv[1])
 
-    # get data from csv
-    if "fill_orders" in config.keys():
-        orders = [config["orders"] for i in range(config["nb_costumers"])]
-        orders.insert(0, 0)
-    else:
-        orders = list(itertools.chain(*aux.readCSV(config["orders_file"])))
+        if "fill_orders" in config.keys():
+            aux.validate_config(config, ["dist_file", "coord_file"], sys.argv[1])
+        else:
+            aux.validate_config(config, ["orders_file", "dist_file", "coord_file"], sys.argv[1])
 
-    print(orders)
+        # get data from csv
+        if "fill_orders" in config.keys():
+            orders = [config["orders"] for i in range(config["nb_costumers"])]
+            orders.insert(0, 0)
+        else:
+            orders = list(itertools.chain(*aux.readCSV(config["orders_file"])))
 
-    distances = aux.readCSV(config["dist_file"])
-    coordinates = aux.readCSV(config["coord_file"])
+        print(orders)
 
-    if config["multi_objective"] == True:
-        algorithm = Algorithm(config, orders, distances, coordinates)
+        distances = aux.readCSV(config["dist_file"])
+        coordinates = aux.readCSV(config["coord_file"])
 
-        pop, logbook, hof = algorithm.runMulti()
+        if config["multi_objective"] == True:
+            algorithm = Algorithm(config, orders, distances, coordinates)
 
-        
-        pareto_front = []
+            pop, logbook, hof = algorithm.runMulti()
 
-        for points in hof:
-            pareto_front.append(algorithm.evalRouteMulti(points))
-        print("NUMBER OF CUSTOMERS: " + str(config['nb_costumers']))
-        print()
-        print("Pareto Front:" + str(pareto_front))
-        print()
-        print("Min Cost:" + str(pareto_front[-1]))
-        print("Min Dist:" + str(pareto_front[0]))
+            
+            pareto_front = []
 
-        # Pareto Front
-        maxCost = pareto_front[0][1]
-        maxDist = pareto_front[-1][0]
+            for points in hof:
+                pareto_front.append(algorithm.evalRouteMulti(points))
+            print("NUMBER OF CUSTOMERS: " + str(config['nb_costumers']))
+            print()
+            print("Pareto Front:" + str(pareto_front))
+            print()
+            print("Min Cost:" + str(pareto_front[-1]))
+            print("Min Dist:" + str(pareto_front[0]))
 
-        costNorm = []
-        distNorm = []
+            # Pareto Front
+            maxCost = pareto_front[0][1]
+            maxDist = pareto_front[-1][0]
 
-        for index, point in enumerate(pareto_front):
-            distNorm.append(pareto_front[index][0] / maxDist)
-            costNorm.append(pareto_front[index][1] / maxCost)
+            costNorm = []
+            distNorm = []
 
-        # Hyper Volume
-        hypervolume = []
+            for index, point in enumerate(pareto_front):
+                distNorm.append(pareto_front[index][0] / maxDist)
+                costNorm.append(pareto_front[index][1] / maxCost)
 
-        for index in range(logbook[-1]['gen'] + 1):
-            hypervolume.append(logbook[index]['hyper'])      
+            # Hyper Volume
+            hypervolume = []
 
-        hypervolume_array = np.array(hypervolume)
+            for index in range(logbook[-1]['gen'] + 1):
+                hypervolume.append(logbook[index]['hyper'])      
 
-        max_hyper = np.max(hypervolume)  
-        for index, hyper in enumerate(hypervolume_array):
-            hypervolume_array[index] = hypervolume_array[index] / max_hyper 
+            hypervolume_array = np.array(hypervolume)
 
-        plt.plot(list(range(len(hypervolume_array))), hypervolume_array)
+            max_hyper = np.max(hypervolume)  
+            for index, hyper in enumerate(hypervolume_array):
+                hypervolume_array[index] = hypervolume_array[index] / max_hyper 
 
-        plt.show()
+            plt.plot(list(range(len(hypervolume_array))), hypervolume_array)
 
-        plt.plot(costNorm,distNorm, 'o')
+            plt.show()
 
-        plt.show()
-        
+            plt.plot(costNorm,distNorm, 'o')
 
-    else:
-        algorithm = Algorithm(config, orders, distances, coordinates)
+            plt.show()
+            
 
-        min_route, min_trend, avg_trend, stats = algorithm.runSingle()
+        else:
+            algorithm = Algorithm(config, orders, distances, coordinates)
 
-        print(stats)
+            min_route, min_trend, avg_trend, stats = algorithm.runSingle()
 
-        plotRoute(min_route, coordinates)
+            print(stats)
 
-        plotTrends([min_trend])
+            plotRoute(min_route, coordinates)
+
+            plotTrends([min_trend])

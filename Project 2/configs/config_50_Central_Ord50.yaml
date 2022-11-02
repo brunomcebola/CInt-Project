@@ -5,3 +5,5 @@ nb_costumers: 50
 
 fill_orders: True
 orders: 50
+
+multi_objective: false
