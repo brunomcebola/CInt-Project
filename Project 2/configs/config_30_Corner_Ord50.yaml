@@ -7,3 +7,5 @@ fill_orders: True
 orders: 50
 
 multi_objective: false
+
+heuristic: true

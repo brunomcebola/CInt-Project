@@ -43,7 +43,7 @@ def plotTrends(trends, legends):
     print(legends[0])
     for index,trend in enumerate(trends):
         plt.plot(list(range(len(trend))), trend)
-        
+
     plt.legend(legends)
 
     plt.show()

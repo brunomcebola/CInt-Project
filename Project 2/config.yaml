@@ -2,11 +2,11 @@ dist_file: CustDist_WHCentral.csv
 coord_file: CustXY_WHCentral.csv
 orders_file: CustOrd.csv
 
-nb_costumers: 10
+nb_costumers: 30
 
-fill_orders:
-orders: 50
+# fill_orders:
+# orders: 50
 
-heuristic: false
+heuristic: true
 
 multi_objective: true

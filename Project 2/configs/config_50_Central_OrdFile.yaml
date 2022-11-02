@@ -5,3 +5,5 @@ orders_file: CustOrd.csv
 nb_costumers: 50
 
 multi_objective: false
+
+heuristic: true
