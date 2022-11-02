@@ -39,9 +39,12 @@ def findangles(centroid, list_of_points, focus_point):
     return np.array(angles)
 
 
-def plotTrends(trends):
-    for trend in trends:
+def plotTrends(trends, legends):
+    print(legends[0])
+    for index,trend in enumerate(trends):
         plt.plot(list(range(len(trend))), trend)
+        
+    plt.legend(legends)
 
     plt.show()
 
@@ -448,6 +451,7 @@ if __name__ == "__main__":
         allFiles = [customers_10, customers_30, customers_50]
         for scope in allFiles:
             trend = []
+            legends = []
             for file in scope:
                 # get config from yaml
                 config = aux.read_yaml("./configs/" + file)
@@ -476,8 +480,9 @@ if __name__ == "__main__":
 
                 print(stats)
                 trend.append(min_trend)
+                legends.append(file[10:-5])
 
-            plotTrends(trend)
+            plotTrends(trend, legends)
     else:
         # get config from yaml
         config = aux.read_yaml(sys.argv[1])
