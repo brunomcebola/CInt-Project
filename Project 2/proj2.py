@@ -449,6 +449,8 @@ if __name__ == "__main__":
     else:
         orders = list(itertools.chain(*aux.readCSV(config["orders_file"])))
 
+    print(orders)
+
     distances = aux.readCSV(config["dist_file"])
     coordinates = aux.readCSV(config["coord_file"])
 
